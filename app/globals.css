@@ -2,6 +2,17 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Keep editor scrolling available without the native button-heavy scrollbars. */
+.editor-scroll, html:has(.editor-workspace) {
+  scrollbar-width: thin;
+  scrollbar-color: #bdb5cc transparent;
+}
+.editor-scroll::-webkit-scrollbar { width: 5px; height: 5px; }
+.editor-scroll::-webkit-scrollbar-track { background: transparent; }
+.editor-scroll::-webkit-scrollbar-thumb { background: #bdb5cc; border-radius: 999px; }
+.editor-scroll::-webkit-scrollbar-thumb:hover { background: #9586ac; }
+.editor-scroll::-webkit-scrollbar-button { display: none; }
+
 :root { --ink:#17131f; --muted:#686270; --paper:#f8f6ff; --surface:#fff; --violet:#7557ff; --lime:#d8ff63; --pink:#ff7fb2; --line:rgba(23,19,31,.12); }
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }

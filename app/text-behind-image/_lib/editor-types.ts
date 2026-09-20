@@ -12,6 +12,8 @@ export interface TextLayer {
   shadowSize: number;
   rotation: number;
   placement: LayerPlacement;
+  textEffect: "normal" | "behind" | "knockout";
+  outlineWidth: number;
   zIndex: number;
 }
 
@@ -51,6 +53,8 @@ export const createTextLayer = (id: number): TextLayer => ({
   shadowSize: 0,
   rotation: 0,
   placement: "behind",
+  textEffect: "behind",
+  outlineWidth: 2,
   zIndex: id,
 });
 

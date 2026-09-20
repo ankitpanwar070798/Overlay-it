@@ -1,7 +1,9 @@
 import type { TextLayer,TextLayerAttribute } from "../_lib/editor-types";
 import FontFamilyPicker from "./font-picker";
+import TextStyles from "./text-styles";
 interface Props{ textSet:TextLayer; handleAttributeChange:(id:number,attribute:TextLayerAttribute,value:string|number)=>void; }
 export default function TextCustomizer({textSet,handleAttributeChange}:Props){const change=(attribute:TextLayerAttribute,value:string|number)=>handleAttributeChange(textSet.id,attribute,value);return <div className="space-y-5">
+  <TextStyles key={textSet.id} layer={textSet}/>
   <div><label className="editor-label" htmlFor={`text-${textSet.id}`}>Text</label><input id={`text-${textSet.id}`} className="editor-input" value={textSet.text} onChange={e=>change("text",e.target.value)} placeholder="Say something bold"/></div>
   <div className="grid grid-cols-[minmax(0,1fr)_76px] gap-3"><FontFamilyPicker attribute="fontFamily" currentFont={textSet.fontFamily} handleAttributeChange={(attribute,value)=>change(attribute,value)}/><div><label className="editor-label" htmlFor={`color-${textSet.id}`}>Color</label><input id={`color-${textSet.id}`} type="color" className="h-11 w-full cursor-pointer rounded-xl border border-black/10 bg-[#f8f7fb] p-1.5" value={textSet.color} onChange={e=>change("color",e.target.value)}/></div></div>
   <div><div className="mb-2 flex items-center justify-between"><label className="editor-label !mb-0" htmlFor={`size-${textSet.id}`}>Size</label><output className="text-xs font-medium text-[#6f54e8]">{textSet.fontSize}</output></div><input id={`size-${textSet.id}`} type="range" min="20" max="500" value={textSet.fontSize} onChange={e=>change("fontSize",Number(e.target.value))} className="w-full accent-[#7557ff]"/></div>

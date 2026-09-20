@@ -1,6 +1,7 @@
 import { useStore } from "zustand";
 import { create } from "zustand";
 import { temporal, type TemporalState } from "zundo";
+import { defaultEffects, type ImageEffects, type EffectTarget } from "./image-effects";
 import {
   createImageLayer,
   createTextLayer,
@@ -11,6 +12,9 @@ import {
 } from "./editor-types";
 
 interface EditorStore {
+  effects: Record<EffectTarget, ImageEffects>;
+  updateEffects: (target: EffectTarget, patch: Partial<ImageEffects>) => void;
+  resetEffects: (target: EffectTarget) => void;
   selectedLayer: LayerSelection | null;
   textLayers: TextLayer[];
   imageLayers: ImageLayer[];
@@ -27,7 +31,7 @@ interface EditorStore {
   sendLayerBehind: (kind: LayerKind, id: number) => void;
 }
 
-type EditorHistoryState = Pick<EditorStore, "textLayers" | "imageLayers">;
+type EditorHistoryState = Pick<EditorStore, "textLayers" | "imageLayers" | "effects">;
 
 const nextId = (state: Pick<EditorStore, "textLayers" | "imageLayers">) =>
   Math.max(0, ...state.textLayers.map((layer) => layer.id), ...state.imageLayers.map((layer) => layer.id)) + 1;
@@ -37,6 +41,9 @@ const nextZ = (state: Pick<EditorStore, "textLayers" | "imageLayers">) =>
 export const useEditorStore = create<EditorStore>()(
   temporal<EditorStore, [], [], EditorHistoryState>(
     (set, get) => ({
+      effects: { background: defaultEffects(), subject: defaultEffects() },
+      updateEffects: (target, patch) => set(state => ({ effects: { ...state.effects, [target]: { ...state.effects[target], ...patch } } })),
+      resetEffects: target => set(state => ({ effects: { ...state.effects, [target]: defaultEffects() } })),
       selectedLayer: null,
       textLayers: [],
       imageLayers: [],
@@ -73,7 +80,7 @@ export const useEditorStore = create<EditorStore>()(
         textLayers: kind === "text" ? state.textLayers.filter((layer) => layer.id !== id) : state.textLayers,
         imageLayers: kind === "image" ? state.imageLayers.filter((layer) => layer.id !== id) : state.imageLayers,
       })),
-      resetDocument: () => set({ selectedLayer: null, textLayers: [], imageLayers: [] }),
+      resetDocument: () => set({ selectedLayer: null, textLayers: [], imageLayers: [], effects: { background: defaultEffects(), subject: defaultEffects() } }),
       selectLayer: (selectedLayer) => set({ selectedLayer }),
       updateTextLayer: (id, patch) => set((state) => ({ textLayers: state.textLayers.map((layer) => layer.id === id ? { ...layer, ...patch } : layer) })),
       updateImageLayer: (id, patch) => set((state) => ({ imageLayers: state.imageLayers.map((layer) => layer.id === id ? { ...layer, ...patch } : layer) })),
@@ -81,20 +88,20 @@ export const useEditorStore = create<EditorStore>()(
         const zIndex = nextZ(get());
         set((state) => ({
           selectedLayer: { kind, id },
-          textLayers: kind === "text" ? state.textLayers.map((layer) => layer.id === id ? { ...layer, placement: "front", zIndex } : layer) : state.textLayers,
+          textLayers: kind === "text" ? state.textLayers.map((layer) => layer.id === id ? { ...layer, placement: "front", textEffect: "normal", zIndex } : layer) : state.textLayers,
           imageLayers: kind === "image" ? state.imageLayers.map((layer) => layer.id === id ? { ...layer, placement: "front", zIndex } : layer) : state.imageLayers,
         }));
       },
       sendLayerBehind: (kind, id) => set((state) => ({
         selectedLayer: { kind, id },
-        textLayers: kind === "text" ? state.textLayers.map((layer) => layer.id === id ? { ...layer, placement: "behind" } : layer) : state.textLayers,
+        textLayers: kind === "text" ? state.textLayers.map((layer) => layer.id === id ? { ...layer, placement: "behind", textEffect: "behind" } : layer) : state.textLayers,
         imageLayers: kind === "image" ? state.imageLayers.map((layer) => layer.id === id ? { ...layer, placement: "behind" } : layer) : state.imageLayers,
       })),
     }),
     {
       limit: 50,
-      equality: (past, current) => past.textLayers === current.textLayers && past.imageLayers === current.imageLayers,
-      partialize: (state): EditorHistoryState => ({ textLayers: state.textLayers, imageLayers: state.imageLayers }),
+      equality: (past, current) => past.textLayers === current.textLayers && past.imageLayers === current.imageLayers && past.effects === current.effects,
+      partialize: (state): EditorHistoryState => ({ textLayers: state.textLayers, imageLayers: state.imageLayers, effects: state.effects }),
     },
   ),
 );
