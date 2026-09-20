@@ -10,13 +10,13 @@ import Overlayit from "./components/Overlayit";
 
 export default function Home() {
   return (
-    <>
+    <main className="overflow-hidden">
     <Navbar/>
     <HeroSection/>
     <FeaturesSection/>
     <ImageComparision/>
     <Overlayit/>
     <Footer/>
-    </>
+    </main>
   );
 }

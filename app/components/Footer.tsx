@@ -1,13 +1,2 @@
-import React from 'react'
-
-const Footer = () => {
-    return (
-        <div>
-            <p className="text-center uppercase mt-20 text-5xl md:text-9xl lg:text-[12rem] xl:text-[13rem] font-bold bg-clip-text 
-            text-transparent bg-gradient-to-b from-neutral-50 dark:from-neutral-950 to-neutral-200 dark:to-neutral-800 inset-x-0">
-                PICME</p>
-        </div>
-    )
-}
-
-export default Footer
+import Link from "next/link";
+export default function Footer(){return <footer className="mt-12 overflow-hidden rounded-t-[3rem] bg-[#7557ff] text-white"><div className="page-shell flex flex-col gap-8 py-10 sm:flex-row sm:items-center sm:justify-between"><div><div className="text-2xl font-black">OverlayIt</div><p className="mt-2 text-sm text-white/65">Your image never leaves your device.</p></div><div className="flex flex-wrap gap-6 text-sm font-semibold"><Link href="/text-behind-image">Open editor</Link><a href="https://www.instagram.com/ankitpanwar07/" target="_blank" rel="noreferrer">Instagram</a><a href="mailto:hello@overlayit.app">Feedback</a></div></div><div className="select-none whitespace-nowrap text-center text-[clamp(5rem,18vw,17rem)] font-black leading-[.72] tracking-[-.09em] text-white/10">OVERLAYIT</div></footer>}

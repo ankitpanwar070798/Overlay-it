@@ -2,12 +2,13 @@ import React from 'react';
 import { Button, Dropdown, Tabs, Menu, Row, Col } from 'antd';
 import { ChromePicker, ColorResult } from 'react-color';
 import { colors } from './colors';
+import type { TextLayerAttribute } from '../_lib/editor-types';
 
 interface ColorPickerProps {
-  attribute: string;
+  attribute: TextLayerAttribute;
   label: string;
   currentColor: string;
-  handleAttributeChange: (attribute: string, value: string) => void; // Ensure the value is a string
+  handleAttributeChange: (attribute: TextLayerAttribute, value: string) => void;
 }
 
 const ColorPicker: React.FC<ColorPickerProps> = ({

@@ -15,6 +15,7 @@
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
     "cmdk": "^1.0.0",
+    "konva": "^10.6.0",
     "mini-svg-data-uri": "^1.4.4",
     "next": "14.2.15",
     "random-word-slugs": "^0.1.7",
@@ -22,7 +23,10 @@
     "react-color": "^2.19.3",
     "react-compare-slider": "^3.1.0",
     "react-dom": "^18",
-    "react-responsive": "^10.0.0"
+    "react-konva": "^18.2.16",
+    "react-responsive": "^10.0.0",
+    "zundo": "^2.3.0",
+    "zustand": "^5.0.15"
   },
   "devDependencies": {
     "@types/node": "^20",

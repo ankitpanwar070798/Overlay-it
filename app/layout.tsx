@@ -1,8 +1,6 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
-import { Suspense } from "react";
-import AntDesignRegistry from "@/lib/antd-registry";
 import Script from "next/script";
 
 const geistSans = localFont({
@@ -17,8 +15,8 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "Picme",
-  description: "Picme is an easy to use image overlay tool",
+  title: "OverlayIt — Put text behind anything",
+  description: "Remove image backgrounds and create scroll-stopping text-behind-subject edits in your browser.",
 };
 
 export default function RootLayout({
@@ -47,9 +45,7 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <AntDesignRegistry>
-          <Suspense>{children}</Suspense>
-        </AntDesignRegistry>
+        {children}
       </body>
     </html>
   );

@@ -1,9 +1,19 @@
-/** @type {import('next').NextConfig} */
-const nextConfig = {
-    images: {
-        domains: ["tailwindui.com"],
-      },
-};
+import { PHASE_DEVELOPMENT_SERVER } from "next/constants.js";
 
-export default nextConfig;
+/** @param {string} phase */
+export default function nextConfig(phase) {
+  return {
+    // Keep development assets separate from production output. Otherwise a
+    // `next build` can replace the CSS chunks that an open dev server expects.
+    distDir: phase === PHASE_DEVELOPMENT_SERVER ? ".next-dev" : ".next",
+    images: {
+      remotePatterns: [
+        {
+          protocol: "https",
+          hostname: "tailwindui.com",
+        },
+      ],
+    },
+  };
+}
 

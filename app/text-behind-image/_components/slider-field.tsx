@@ -1,14 +1,15 @@
 import React from 'react';
 import { Slider, InputNumber, Form } from 'antd';
+import type { TextLayerAttribute } from '../_lib/editor-types';
 
 interface SliderFieldProps {
-  attribute: string;
+  attribute: TextLayerAttribute;
   label: string;
   min: number;
   max: number;
   step: number;
   currentValue: number;
-  handleAttributeChange: (attribute: string, value: number) => void;
+  handleAttributeChange: (attribute: TextLayerAttribute, value: number) => void;
 }
 
 const SliderField: React.FC<SliderFieldProps> = ({

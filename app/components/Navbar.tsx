@@ -1,24 +1,9 @@
-"use client";
-import React from "react";
-import { InstagramOutlined } from "@ant-design/icons";
 import Link from "next/link";
 
-const Navbar: React.FC = () => {
-  return (
-    <header className="shadow-inner backdrop-filter backdrop-blur-md bg-opacity-50 w-[90%] md:w-[70%] lg:w-[75%] lg:max-w-screen-xl top-5 mx-auto sticky border border-secondary z-40 rounded-2xl flex justify-between items-center p-4 bg-card mt-4">
-      {/* Logo on the left */}
-      <Link href="/" className="font-bold text-2xl text-lg flex items-center">
-        Pic<span className="bg-[#9CA986] text-white px-1 rounded">me</span>
-      </Link>
-
-      {/* Sign In button on the right */}
-      <div className="flex items-center">
-      <Link href="https://www.instagram.com/ankitpanwar07/" target="_blank" className="font-bold text-2xl text-lg flex items-center text-black hover:text-black">
-        <InstagramOutlined style={{ fontSize: '28px', color: '#9ca986', marginRight: '10px' }} />
-        </Link>
-      </div>
-    </header>
-  );
-};
-
-export default Navbar;
+export default function Navbar() {
+  return <header className="sticky top-0 z-50 border-b border-black/[.06] bg-[#f8f6ff]/85 backdrop-blur-xl"><div className="page-shell flex h-20 items-center justify-between">
+    <Link href="/" className="flex items-center gap-2 text-xl font-black tracking-tight" aria-label="OverlayIt home"><span className="grid h-9 w-9 place-items-center rounded-xl bg-[#17131f] text-sm text-[#d8ff63] shadow-[3px_3px_0_#7557ff]">OI</span>OverlayIt</Link>
+    <nav className="hidden items-center gap-8 text-sm font-semibold md:flex" aria-label="Main navigation"><Link className="hover:text-[#7557ff]" href="#how-it-works">How it works</Link><Link className="hover:text-[#7557ff]" href="#features">Features</Link><Link className="hover:text-[#7557ff]" href="#showcase">Showcase</Link></nav>
+    <Link href="/text-behind-image" className="pill-button bg-[#d8ff63] px-5 text-[#17131f] hover:-translate-y-0.5 hover:shadow-[0_5px_0_#17131f]">Start creating <span aria-hidden="true">↗</span></Link>
+  </div></header>;
+}

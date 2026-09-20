@@ -1,41 +1,10 @@
-"use client"
-import React from "react"
-import { Button as AntButton } from "antd"
-import Link from "next/link"
+import Image from "next/image";
+import Link from "next/link";
+import girl from "@/public/girl.png";
 
-const HeroSection: React.FC = () => {
-
-  return (
-    <section className="container w-full m-auto">
-      <div className="grid place-items-center lg:max-w-screen-xl gap-8 mx-auto py-20 md:py-32">
-        <div
-          className="text-center space-y-8"
-          data-aos="fade-down"
-          data-aos-duration="1000"
-        >
-          <div className="max-w-screen-lg mx-auto text-center text-4xl md:text-6xl font-bold">
-            <h1 className="lg:leading-[75px] leading-[45px] md:leading-[70px]">
-            Effortlessly <span className="bg-[#9CA986] text-white px-2 rounded">Remove Background</span>  or <span className="bg-[#9CA986] text-white px-2 rounded">Add Text Behind</span> Any Image With Pic<span className="bg-[#9CA986] text-white px-1 rounded">me</span>
-            </h1>
-          </div>
-          <p className="max-w-screen-sm mx-auto text-xl text-muted-foreground">
-            {`Upload your image and get rid of the background or add text to it in just a few clicks!`}
-          </p>
-          <div>
-            
-          </div>
-          <div className="space-y-4 md:space-y-0 md:space-x-4 ">
-            <Link href="/text-behind-image" className="w-5/6 md:w-1/4 text-xl font-medium rounded-3xl mb-3">
-              <AntButton type="primary" className="w-5/6 md:w-1/4 text-xl font-medium rounded-3xl mb-3">
-               Upload image
-              </AntButton>
-            </Link>
-
-          </div>
-        </div>
-      </div>
-    </section>
-  )
+export default function HeroSection() {
+  return <section className="relative overflow-hidden pb-20 pt-12 sm:pt-20 lg:pb-28"><div className="absolute -left-28 top-32 h-72 w-72 rounded-full bg-[#ff7fb2]/25 blur-3xl"/><div className="absolute -right-24 top-0 h-80 w-80 rounded-full bg-[#d8ff63]/35 blur-3xl"/><div className="page-shell relative grid items-center gap-14 lg:grid-cols-[1.05fr_.95fr]">
+    <div><span className="eyebrow"><span className="h-2 w-2 rounded-full bg-[#7557ff]"/> Your browser is the studio</span><h1 className="mt-7 max-w-3xl text-[clamp(2.5rem,6vw,6.8rem)] font-black leading-[.86] tracking-[-.075em]">Text that sits <span className="relative inline-block text-[#7557ff]">behind<span className="absolute -bottom-1 left-0 -z-10 h-3 w-full -rotate-2 rounded-full bg-[#d8ff63] opacity-80"/></span> the moment.</h1><p className="mt-7 max-w-xl text-lg leading-8 text-[#625c69] sm:text-xl">Cut out your subject, layer bold typography, and export a polished visual—without leaving your browser.</p><div className="mt-9 flex flex-col gap-4 sm:flex-row sm:items-center"><Link href="/text-behind-image" className="pill-button-primary">Upload an image <span aria-hidden="true">→</span></Link><span className="text-sm font-medium text-[#716b7a]">Free · no watermark · stays on device</span></div><div className="mt-10 flex items-center gap-5 text-xs font-bold uppercase tracking-[.12em] text-[#716b7a]"><span>JPG</span><span className="h-1 w-1 rounded-full bg-[#7557ff]"/><span>PNG</span><span className="h-1 w-1 rounded-full bg-[#7557ff]"/><span>WEBP</span></div></div>
+    <div className="relative mx-auto w-full max-w-[580px]"><div className="absolute -left-5 top-20 z-20 -rotate-6 rounded-2xl bg-[#d8ff63] px-4 py-3 text-sm font-black shadow-[4px_4px_0_#17131f]">100% browser magic ✦</div><div className="grain relative overflow-hidden rounded-[2.25rem] border-2 border-[#17131f] bg-[#ded9ff] p-5 shadow-[14px_14px_0_#17131f]"><div className="relative aspect-[4/5] overflow-hidden rounded-[1.5rem] bg-gradient-to-br from-[#ffafca] via-[#aa98ff] to-[#d8ff63]"><div className="absolute inset-x-0 top-[35%] text-center text-[clamp(4rem,9vw,7.5rem)] font-black uppercase leading-none tracking-[-.08em] text-white/90">UNREAL</div><Image src={girl} alt="Creative portrait with text layered behind the subject" fill priority className="z-10 object-cover object-center" sizes="(max-width:1024px) 90vw,40vw"/><div className="absolute bottom-5 left-5 z-20 rounded-full border border-white/30 bg-black/50 px-4 py-2 text-xs font-bold text-white backdrop-blur-md">Made with OverlayIt</div></div></div><div className="absolute -bottom-7 -right-2 z-20 rotate-6 rounded-full bg-[#ff7fb2] px-5 py-4 text-sm font-black text-white shadow-[4px_4px_0_#17131f]">no design skills needed</div></div>
+  </div></section>;
 }
-
-export default HeroSection

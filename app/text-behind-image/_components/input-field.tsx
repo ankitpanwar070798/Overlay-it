@@ -1,11 +1,12 @@
 import React from 'react';
 import { Input, Form } from 'antd';
+import type { TextLayerAttribute } from '../_lib/editor-types';
 
 interface InputFieldProps {
-  attribute: string;
+  attribute: TextLayerAttribute;
   label: string;
   currentValue: string;
-  handleAttributeChange: (attribute: string, value: string) => void;
+  handleAttributeChange: (attribute: TextLayerAttribute, value: string) => void;
 }
 
 const InputField: React.FC<InputFieldProps> = ({

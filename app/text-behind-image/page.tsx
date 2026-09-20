@@ -1,342 +1,165 @@
 "use client";
-import React, { useRef, useState } from "react";
-import {
-  Button,
-  Upload,
-  Spin,
-  Typography,
-  Row,
-  Col,
-  Divider,
-  Collapse,
-  Image as AntImage
-} from "antd";
-import {
-  PlusOutlined,
-  DownloadOutlined,
-  InstagramOutlined,
-} from "@ant-design/icons";
-import { removeBackground } from "@imgly/background-removal";
-import TextCustomizer from "./_components/text-customizer";
-import "@/app/fonts.css";
+
+import dynamic from "next/dynamic";
+import Image from "next/image";
 import Link from "next/link";
-import { useMediaQuery } from "react-responsive";
+import { ChangeEvent, DragEvent, MutableRefObject, ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { ReactCompareSlider } from "react-compare-slider";
+import "@/app/fonts.css";
+import TextCustomizer from "./_components/text-customizer";
+import { clearEditorHistory, useEditorHistory, useEditorStore } from "./_lib/editor-store";
+import type { ImageLayer, LayerKind, LayerPlacement, TextLayerAttribute } from "./_lib/editor-types";
+import type { EditorCanvasExporter } from "./_components/editor-canvas";
 
-const { Title } = Typography;
-const { Panel } = Collapse;
+const EditorCanvas=dynamic(()=>import("./_components/editor-canvas"),{ssr:false,loading:()=> <div className="grid min-h-80 place-items-center rounded-3xl bg-white/5 text-sm text-white/60">Preparing your canvas…</div>});
+const MAX_FILE_SIZE=20*1024*1024;
+const ACCEPTED_TYPES=new Set(["image/jpeg","image/png","image/webp"]);
+type RemovalStatus="idle"|"removing"|"ready"|"error";
 
-interface TextSet {
-  id: number;
-  text: string;
-  fontFamily: string;
-  top: number;
-  left: number;
-  color: string;
-  fontSize: number;
-  fontWeight: number;
-  opacity: number;
-  shadowColor: string;
-  shadowSize: number;
-  rotation: number;
+function Icon({children}:{children:ReactNode}){return <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5 fill-none stroke-current stroke-2" strokeLinecap="round" strokeLinejoin="round">{children}</svg>}
+const UploadIcon=()=> <Icon><path d="M12 16V4m0 0L7 9m5-5 5 5"/><path d="M5 14v5h14v-5"/></Icon>;
+const UndoIcon=()=> <Icon><path d="M9 7 5 11l4 4"/><path d="M5 11h8a6 6 0 0 1 6 6"/></Icon>;
+const RedoIcon=()=> <Icon><path d="m15 7 4 4-4 4"/><path d="M19 11h-8a6 6 0 0 0-6 6"/></Icon>;
+const PlusIcon=()=> <Icon><path d="M12 5v14M5 12h14"/></Icon>;
+const DownloadIcon=()=> <Icon><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M4 19h16"/></Icon>;
+const EyeIcon=()=> <Icon><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="2.5"/></Icon>;
+const CompareIcon=()=> <Icon><path d="M8 4v16M16 4v16"/><path d="m5 7 3-3 3 3m2 10 3 3 3-3"/></Icon>;
+const TextIcon=()=> <Icon><path d="M5 6V4h14v2M12 4v16m-4 0h8"/></Icon>;
+const GraphicIcon=()=> <Icon><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="8.5" cy="9" r="1.5"/><path d="m5 17 4.5-4 3.5 3 2.5-2 3.5 3"/></Icon>;
+const LayersIcon=()=> <Icon><path d="m12 3-9 5 9 5 9-5-9-5Z"/><path d="m3 12 9 5 9-5M3 16l9 5 9-5"/></Icon>;
+
+export default function Page(){
+  const [selectedImage,setSelectedImage]=useState<string|null>(null);
+  const [removedBgImageUrl,setRemovedBgImageUrl]=useState<string|null>(null);
+  const [removalStatus,setRemovalStatus]=useState<RemovalStatus>("idle");
+  const [removalProgress,setRemovalProgress]=useState<number|null>(null);
+  const [errorMessage,setErrorMessage]=useState<string|null>(null);
+  const [isDownloading,setIsDownloading]=useState(false);
+  const [canvasReady,setCanvasReady]=useState(false);
+  const [actionError,setActionError]=useState<string|null>(null);
+  const [isDragging,setIsDragging]=useState(false);
+  const [comparisonOpen,setComparisonOpen]=useState(false);
+  const [previewUrl,setPreviewUrl]=useState<string|null>(null);
+  const inputRef=useRef<HTMLInputElement>(null);
+  const graphicInputRef=useRef<HTMLInputElement>(null);
+  const canvasExporterRef=useRef<EditorCanvasExporter|null>(null);
+  const currentRequestRef=useRef(0);
+  const lastFileRef=useRef<File|null>(null);
+  const selectedUrlRef=useRef<string|null>(null);
+  const removedUrlRef=useRef<string|null>(null);
+  const addTextLayer=useEditorStore(s=>s.addTextLayer);
+  const addImageLayer=useEditorStore(s=>s.addImageLayer);
+  const duplicateTextLayer=useEditorStore(s=>s.duplicateTextLayer);
+  const duplicateImageLayer=useEditorStore(s=>s.duplicateImageLayer);
+  const removeLayer=useEditorStore(s=>s.removeLayer);
+  const resetDocument=useEditorStore(s=>s.resetDocument);
+  const textLayers=useEditorStore(s=>s.textLayers);
+  const imageLayers=useEditorStore(s=>s.imageLayers);
+  const selection=useEditorStore(s=>s.selectedLayer);
+  const selectLayer=useEditorStore(s=>s.selectLayer);
+  const updateTextLayer=useEditorStore(s=>s.updateTextLayer);
+  const updateImageLayer=useEditorStore(s=>s.updateImageLayer);
+  const bringLayerToFront=useEditorStore(s=>s.bringLayerToFront);
+  const sendLayerBehind=useEditorStore(s=>s.sendLayerBehind);
+  const canUndo=useEditorHistory(s=>s.pastStates.length>0);
+  const canRedo=useEditorHistory(s=>s.futureStates.length>0);
+  const selectedText=selection?.kind==="text"?textLayers.find(layer=>layer.id===selection.id)??null:null;
+  const selectedGraphic=selection?.kind==="image"?imageLayers.find(layer=>layer.id===selection.id)??null:null;
+  const allLayers=[
+    ...textLayers.map(layer=>({kind:"text" as const,id:layer.id,label:layer.text||"Untitled text",placement:layer.placement})),
+    ...imageLayers.map(layer=>({kind:"image" as const,id:layer.id,label:layer.name,placement:layer.placement})),
+  ].sort((a,b)=>a.id-b.id);
+
+  useEffect(()=>()=>{currentRequestRef.current+=1;if(selectedUrlRef.current)URL.revokeObjectURL(selectedUrlRef.current);if(removedUrlRef.current)URL.revokeObjectURL(removedUrlRef.current)},[]);
+  const replaceObjectUrl=(reference:MutableRefObject<string|null>,nextUrl:string|null)=>{if(reference.current)URL.revokeObjectURL(reference.current);reference.current=nextUrl};
+  const removeBackgroundFromFile=async(file:File,requestId:number)=>{
+    setRemovalStatus("removing");setRemovalProgress(null);setErrorMessage(null);
+    try{
+      const {removeBackground}=await import("@imgly/background-removal");
+      const imageBlob=await removeBackground(file,{model:"isnet_fp16",proxyToWorker:true,progress:(_key,current,total)=>{if(requestId===currentRequestRef.current&&total>0)setRemovalProgress(Math.round(current/total*100))}});
+      if(requestId!==currentRequestRef.current)return;
+      const url=URL.createObjectURL(imageBlob);replaceObjectUrl(removedUrlRef,url);setRemovedBgImageUrl(url);setRemovalProgress(100);setRemovalStatus("ready");
+    }catch(error){if(requestId!==currentRequestRef.current)return;console.error(error);setRemovalStatus("error");setErrorMessage("The cutout got stuck. Try again, or choose a smaller image with a clearer subject.")}
+  };
+  const handleFile=(file?:File)=>{
+    if(!file)return;
+    if(!ACCEPTED_TYPES.has(file.type)){setErrorMessage("Choose a JPG, PNG, or WebP image.");return}
+    if(file.size>MAX_FILE_SIZE){setErrorMessage("That image is over 20 MB. Choose a smaller one.");return}
+    const requestId=currentRequestRef.current+1;currentRequestRef.current=requestId;lastFileRef.current=file;
+    const url=URL.createObjectURL(file);replaceObjectUrl(selectedUrlRef,url);replaceObjectUrl(removedUrlRef,null);setSelectedImage(url);setRemovedBgImageUrl(null);resetDocument();clearEditorHistory();void removeBackgroundFromFile(file,requestId);
+  };
+  const handleGraphic=(file?:File)=>{
+    if(!file)return;
+    if(!ACCEPTED_TYPES.has(file.type)){setErrorMessage("Graphics and stickers must be JPG, PNG, or WebP.");return}
+    if(file.size>MAX_FILE_SIZE){setErrorMessage("That graphic is over 20 MB. Choose a smaller one.");return}
+    const reader=new FileReader();
+    reader.onload=()=>{if(typeof reader.result==="string")addImageLayer(reader.result,file.name.replace(/\.[^/.]+$/,"")||"Graphic")};
+    reader.readAsDataURL(file);
+  };
+  const onDrop=(event:DragEvent)=>{event.preventDefault();setIsDragging(false);handleFile(event.dataTransfer.files?.[0])};
+  const retryRemoval=()=>{if(lastFileRef.current){const id=++currentRequestRef.current;void removeBackgroundFromFile(lastFileRef.current,id)}};
+  const change=(id:number,attribute:TextLayerAttribute,value:string|number)=>updateTextLayer(id,{[attribute]:value});
+  const handleExportReady=useCallback((exporter:EditorCanvasExporter|null)=>{canvasExporterRef.current=exporter;setCanvasReady(Boolean(exporter))},[]);
+  const exportImage=()=>{if(!canvasExporterRef.current||removalStatus!=="ready")throw new Error("The canvas exporter is not ready.");return canvasExporterRef.current()};
+  const triggerDownload=(href:string,filename:string)=>{const link=document.createElement("a");link.href=href;link.download=filename;link.rel="noopener";document.body.appendChild(link);link.click();link.remove()};
+  const save=()=>{setIsDownloading(true);setActionError(null);try{triggerDownload(exportImage(),"overlayit-final.png")}catch(error){console.error(error);setActionError(`The final image could not be prepared. ${error instanceof Error?error.message:"Please try again."}`)}finally{setIsDownloading(false)}};
+  const openPreview=()=>{setIsDownloading(true);setActionError(null);try{setPreviewUrl(exportImage())}catch(error){console.error(error);setActionError(`The preview could not be created. ${error instanceof Error?error.message:"Please try again."}`)}finally{setIsDownloading(false)}};
+  const closePreview=()=>setPreviewUrl(null);
+  const downloadCutout=()=>{if(!removedBgImageUrl){setActionError("The background-removed image is not ready yet.");return}setActionError(null);triggerDownload(removedBgImageUrl,"overlayit-cutout.png")};
+  const setPlacement=(kind:LayerKind,id:number,placement:LayerPlacement)=>placement==="front"?bringLayerToFront(kind,id):sendLayerBehind(kind,id);
+
+  return <main className="min-h-screen bg-[#090a0e] text-white selection:bg-[#846cff]/40">
+    <input ref={inputRef} type="file" className="sr-only" accept="image/jpeg,image/png,image/webp" onChange={(event:ChangeEvent<HTMLInputElement>)=>handleFile(event.target.files?.[0])}/>
+    <input ref={graphicInputRef} type="file" className="sr-only" accept="image/jpeg,image/png,image/webp" onChange={(event:ChangeEvent<HTMLInputElement>)=>{handleGraphic(event.target.files?.[0]);event.target.value=""}}/>
+    <header className="sticky top-0 z-50 border-b border-white/[.07] bg-[#090a0e]/80 backdrop-blur-2xl"><div className="mx-auto flex h-16 max-w-[1800px] items-center justify-between gap-3 px-3 sm:px-5">
+      <Link href="/" className="flex items-center gap-2.5 text-sm font-semibold tracking-[-.01em]"><span className="grid h-8 w-8 place-items-center rounded-[10px] bg-[#d9ff5a] text-[10px] font-semibold text-[#111217] shadow-[2px_2px_0_#7657ff]">OI</span><span className="hidden sm:inline">OverlayIt</span></Link>
+      {selectedImage?<div className="hidden items-center gap-2 rounded-full border border-white/[.08] bg-white/[.045] px-3 py-1.5 text-xs text-white/55 md:flex"><span className={`h-1.5 w-1.5 rounded-full ${removalStatus==="ready"?"bg-[#d9ff5a]":"animate-pulse bg-[#8c74ff]"}`}/><span>{removalStatus==="ready"?"Canvas ready":"Preparing subject"}</span></div>:null}
+      <div className="flex items-center justify-end gap-1.5"><ToolbarButton label="Undo" disabled={!canUndo} onClick={()=>useEditorStore.temporal.getState().undo()}><UndoIcon/></ToolbarButton><ToolbarButton label="Redo" disabled={!canRedo} onClick={()=>useEditorStore.temporal.getState().redo()}><RedoIcon/></ToolbarButton>
+        <span className="mx-1 hidden h-5 w-px bg-white/10 sm:block"/>
+        <HeaderButton label={selectedImage?"Change photo":"Choose photo"} onClick={()=>inputRef.current?.click()}><UploadIcon/></HeaderButton>
+        {removalStatus==="ready"?<button onClick={save} disabled={isDownloading||!canvasReady} className="inline-flex h-9 items-center gap-2 rounded-full bg-[#d9ff5a] px-3.5 text-xs font-semibold text-[#111217] transition hover:bg-[#e2ff83] disabled:cursor-wait disabled:opacity-45 sm:px-4"><DownloadIcon/><span className="hidden sm:inline">{canvasReady?(isDownloading?"Preparing…":"Export PNG"):"Loading…"}</span></button>:null}
+      </div>
+    </div></header>
+
+    {!selectedImage?<UploadWelcome dragging={isDragging} onDrag={setIsDragging} onDrop={onDrop} onUpload={()=>inputRef.current?.click()}/>:<div className="relative mx-auto grid max-w-[1800px] gap-3 p-3 pb-24 sm:p-4 sm:pb-24 lg:h-[calc(100vh-64px)] lg:grid-cols-[68px_minmax(0,1fr)_360px] lg:gap-4 lg:pb-4">
+      <ToolDock ready={removalStatus==="ready"} canvasReady={canvasReady} addText={addTextLayer} addGraphic={()=>graphicInputRef.current?.click()} compare={()=>setComparisonOpen(true)} preview={openPreview}/>
+      <section className="relative flex min-h-[480px] min-w-0 flex-col overflow-hidden rounded-[26px] border border-white/[.08] bg-[radial-gradient(circle_at_50%_0%,rgba(117,87,255,.12),transparent_38%),#111219] p-2.5 shadow-[0_22px_70px_rgba(0,0,0,.3)] sm:p-4 lg:min-h-0">
+        {actionError?<div role="alert" className="mb-3 flex items-start justify-between gap-4 rounded-2xl border border-[#ff82ad]/25 bg-[#ff82ad]/10 px-4 py-3 text-xs text-[#ffd7e5]"><span>{actionError}</span><button onClick={()=>setActionError(null)} aria-label="Dismiss message" className="text-base leading-none text-white/60">×</button></div>:null}
+        <div className="mb-3 flex items-center justify-between gap-3 px-1"><div className="flex items-center gap-2 text-xs text-white/45"><span className="rounded-full border border-white/10 bg-white/[.05] px-2.5 py-1 text-white/65">Canvas</span><span className="hidden sm:inline">{removalStatus==="ready"?"Drag to move · handles resize · double-click brings forward":"Keeping the original visible while the cutout is prepared"}</span></div><div className="flex items-center gap-1.5 lg:hidden">{removalStatus==="ready"?<><CompactAction label="Compare" onClick={()=>setComparisonOpen(true)}><CompareIcon/></CompactAction><CompactAction label="Preview" onClick={openPreview} disabled={!canvasReady}><EyeIcon/></CompactAction></>:null}</div></div>
+        <div className="relative mx-auto flex min-h-0 w-full max-w-[1120px] flex-1 items-center justify-center overflow-hidden rounded-[20px] border border-white/[.08] bg-[#07080b] p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,.04)] sm:p-3"><div className="h-full min-h-0 w-full"><EditorCanvas foregroundUrl={removedBgImageUrl} originalUrl={selectedImage} onExportReady={handleExportReady}/></div>{removalStatus==="removing"?<Processing progress={removalProgress}/>:null}{removalStatus==="error"?<ErrorOverlay message={errorMessage} retry={retryRemoval}/>:null}</div>
+        <div className="mt-2.5 hidden items-center justify-between px-1 text-[11px] text-white/30 sm:flex"><span>OverlayIt Studio</span><span>{allLayers.length} {allLayers.length===1?"layer":"layers"} · PNG export</span></div>
+      </section>
+
+      <aside className="overflow-hidden rounded-[26px] border border-white/10 bg-[rgba(248,247,252,.96)] text-[#18171d] shadow-[0_22px_70px_rgba(0,0,0,.28)] backdrop-blur-2xl lg:min-h-0"><div className="h-full lg:overflow-y-auto">
+        <div className="border-b border-black/[.07] px-5 py-4"><div className="flex items-center justify-between"><div className="flex items-center gap-2.5"><span className="grid h-8 w-8 place-items-center rounded-xl bg-[#ede9ff] text-[#7257f5]"><LayersIcon/></span><div><p className="text-[11px] font-medium uppercase tracking-[.12em] text-[#827c8b]">Inspector</p><h2 className="text-base font-semibold tracking-[-.015em]">Layers &amp; style</h2></div></div><span className="rounded-full bg-[#ebe7f6] px-2.5 py-1 text-[11px] font-medium">{allLayers.length}</span></div></div>
+        {removalStatus!=="ready"?<div className="p-6"><div className="rounded-3xl border border-black/[.08] bg-white p-6"><p className="font-bold">{removalStatus==="error"?"Background removal paused":"Preparing your editor"}</p><p className="mt-2 text-sm leading-6 text-[#716b7a]">Layer controls will appear as soon as the subject cutout is ready.</p></div></div>:allLayers.length===0?<EmptyLayers addText={addTextLayer} addGraphic={()=>graphicInputRef.current?.click()}/>:<div className="p-5 sm:p-6">
+          <div className="mb-5 flex gap-2 overflow-x-auto pb-1">{allLayers.map(layer=><button key={`${layer.kind}-${layer.id}`} onClick={()=>selectLayer({kind:layer.kind,id:layer.id})} className={`shrink-0 rounded-full border px-3 py-2 text-xs font-medium transition ${selection?.kind===layer.kind&&selection.id===layer.id?"border-[#7557ff] bg-[#7557ff] text-white shadow-sm":"border-black/[.08] bg-white hover:border-[#7557ff]/40"}`}><span className="mr-1.5 opacity-70" aria-hidden="true">{layer.kind==="text"?"T":"◇"}</span>{layer.label}</button>)}<button onClick={addTextLayer} aria-label="Add text layer" className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-black/[.08] bg-white text-[#7257f5]"><PlusIcon/></button></div>
+          {selectedText?<><LayerActions placement={selectedText.placement} kind="text" id={selectedText.id} duplicate={()=>duplicateTextLayer(selectedText)} remove={()=>removeLayer("text",selectedText.id)} setPlacement={setPlacement}/><TextCustomizer textSet={selectedText} handleAttributeChange={change}/></>:null}
+          {selectedGraphic?<><LayerActions placement={selectedGraphic.placement} kind="image" id={selectedGraphic.id} duplicate={()=>duplicateImageLayer(selectedGraphic)} remove={()=>removeLayer("image",selectedGraphic.id)} setPlacement={setPlacement}/><GraphicCustomizer layer={selectedGraphic} update={updateImageLayer}/></>:null}
+          <div className="mt-7 grid grid-cols-2 gap-2 border-t border-black/[.07] pt-5"><button onClick={downloadCutout} className="inline-flex h-10 items-center justify-center gap-1.5 rounded-full border border-black/[.08] bg-white px-3 text-[11px] font-medium transition hover:border-[#7557ff]/30"><DownloadIcon/> Cutout</button><button onClick={save} disabled={isDownloading||!canvasReady} className="inline-flex h-10 items-center justify-center gap-1.5 rounded-full bg-[#18171d] px-3 text-[11px] font-medium text-white transition hover:bg-black disabled:opacity-40"><DownloadIcon/> {canvasReady?"Final PNG":"Loading"}</button></div>
+        </div>}
+      </div></aside>
+      <MobileDock ready={removalStatus==="ready"} canvasReady={canvasReady} downloading={isDownloading} addText={addTextLayer} addGraphic={()=>graphicInputRef.current?.click()} preview={openPreview} download={save}/>
+    </div>}
+    {comparisonOpen&&selectedImage&&removedBgImageUrl?<ComparisonModal original={selectedImage} cutout={removedBgImageUrl} close={()=>setComparisonOpen(false)}/>:null}
+    {previewUrl?<PreviewModal url={previewUrl} close={closePreview} download={save}/>:null}
+  </main>
 }
 
-const Page = () => {
-  const [selectedImage, setSelectedImage] = useState<string | null>(null);
-  const [isImageSetupDone, setIsImageSetupDone] = useState<boolean>(false);
-  const [removedBgImageUrl, setRemovedBgImageUrl] = useState<string | null>(
-    null
-  );
-  const [textSets, setTextSets] = useState<TextSet[]>([]);
-  const [isDownloading, setIsDownloading] = useState(false);
-
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-
-  const isDesktopOrLaptop = useMediaQuery({
-    query: "(min-width: 1224px)",
-  });
-
-  const setupImage = async (imageUrl: string) => {
-    try {
-      const imageBlob = await removeBackground(imageUrl);
-      const url = URL.createObjectURL(imageBlob);
-      setRemovedBgImageUrl(url);
-      setIsImageSetupDone(true);
-    } catch (error) {
-      console.error(error);
-    }
-  };
-
-  const addNewTextSet = () => {
-    const newId = Math.max(...textSets.map((set) => set.id), 0) + 1;
-    setTextSets((prev) => [
-      ...prev,
-      {
-        id: newId,
-        text: "edit",
-        fontFamily: "Inter",
-        top: 0,
-        left: 0,
-        color: "white",
-        fontSize: 100,
-        fontWeight: 800,
-        opacity: 1,
-        shadowColor: "rgba(0, 0, 0, 0.8)",
-        shadowSize: 4,
-        rotation: 0,
-      },
-    ]);
-  };
-
-  const handleAttributeChange = (
-    id: number,
-    attribute: string,
-    value: string | number
-  ) => {
-    setTextSets((prev) =>
-      prev.map((set) => (set.id === id ? { ...set, [attribute]: value } : set))
-    );
-  };
-
-  const duplicateTextSet = (textSet: TextSet) => {
-    const newId = Math.max(...textSets.map((set) => set.id), 0) + 1;
-    setTextSets((prev) => [...prev, { ...textSet, id: newId }]);
-  };
-
-  const removeTextSet = (id: number) => {
-    setTextSets((prev) => prev.filter((set) => set.id !== id));
-  };
-
-  const saveCompositeImage = () => {
-    if (!canvasRef.current || !isImageSetupDone) return;
-
-    setIsDownloading(true);
-
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) {
-      setIsDownloading(false);
-      return;
-    }
-
-    const bgImg = document.createElement("img");
-    bgImg.crossOrigin = "anonymous";
-    bgImg.onload = () => {
-      canvas.width = bgImg.naturalWidth;
-      canvas.height = bgImg.naturalHeight;
-
-      ctx.drawImage(bgImg, 0, 0, canvas.width, canvas.height);
-
-      textSets.forEach((textSet) => {
-        ctx.save();
-        ctx.font = `${textSet.fontWeight} ${
-          (textSet.fontSize * canvas.width) / 1000
-        }px ${textSet.fontFamily}, sans-serif`;
-        ctx.fillStyle = textSet.color;
-        ctx.globalAlpha = textSet.opacity;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-
-        const x = (canvas.width * (textSet.left + 50)) / 100;
-        const y = (canvas.height * (50 - textSet.top)) / 100;
-
-        ctx.translate(x, y);
-        ctx.rotate((textSet.rotation * Math.PI) / 180);
-        ctx.fillText(textSet.text, 0, 0);
-        ctx.restore();
-      });
-
-      if (removedBgImageUrl) {
-        const removedBgImg = document.createElement("img");
-        removedBgImg.crossOrigin = "anonymous";
-        removedBgImg.onload = () => {
-          ctx.drawImage(removedBgImg, 0, 0, canvas.width, canvas.height);
-          triggerDownload();
-        };
-        removedBgImg.src = removedBgImageUrl;
-      } else {
-        triggerDownload();
-      }
-    };
-    bgImg.onerror = () => {
-      setIsDownloading(false);
-    };
-    bgImg.src = selectedImage || "";
-
-    function triggerDownload() {
-      try {
-        const dataUrl = canvas.toDataURL("image/png");
-        const link = document.createElement("a");
-        link.download = "text-behind-image.png";
-        link.href = dataUrl;
-        link.click();
-      } catch (error) {
-        console.error(error);
-      } finally {
-        setIsDownloading(false);
-      }
-    }
-  };
-
-  const downloadRemovedBgImage = () => {
-    if (removedBgImageUrl) {
-      const link = document.createElement("a");
-      link.href = removedBgImageUrl;
-      link.download = "removed-bg-image.png";
-      link.click();
-    }
-  };
-
-  return (
-    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", gap: "10px" }}>
-      <Row justify="space-between" align="middle" style={{ padding: "20px 40px" }}>
-        <Link href="/" className="font-bold text-2xl text-lg flex items-center text-black hover:text-black">
-          Pic<span className="bg-[#9CA986] text-white px-1 rounded">me</span>
-        </Link>
-        <Col className="flex items-center">
-        <Link href="https://www.instagram.com/ankitpanwar07/" target="_blank" className="font-bold text-2xl text-lg flex items-center text-black hover:text-black">
-        <InstagramOutlined style={{ fontSize: '28px', color: '#9ca986', marginRight: '10px' }} />
-        </Link>
-          <Upload
-            ref={fileInputRef}
-            accept=".jpg, .jpeg, .png"
-            showUploadList={false}
-            beforeUpload={(file) => {
-              const imageUrl = URL.createObjectURL(file);
-              setSelectedImage(imageUrl);
-              setupImage(imageUrl);
-              return false;
-            }}
-          >
-            <Button icon={<PlusOutlined />}>Upload Image</Button>
-          </Upload>
-        </Col>
-      </Row>
-      <Divider />
-      <canvas ref={canvasRef} style={{ display: "none" }}></canvas>
-      {selectedImage ? (
-        <>
-          <Row style={isDesktopOrLaptop ? { padding: "40px" } : { padding: "20px" }} gutter={16} align="top">
-            <Col xs={24} md={10} style={{ position: "relative", padding: "10px" }}>
-              {isImageSetupDone ? (
-                <>
-                  <img
-                    src={selectedImage}
-                    alt="Uploaded"
-                    style={{ width: "100%", height: "auto", cursor: "pointer" }}
-                  />
-                  {removedBgImageUrl && (
-                    <img
-                      src={removedBgImageUrl}
-                      alt="Removed bg"
-                      style={{ width: "100%", height: "auto", position: "absolute", top: 0, left: 0, zIndex: 1, cursor: "pointer" }}
-                    />
-                  )}
-                  {isImageSetupDone && textSets.map((textSet) => (
-                    <div key={textSet.id} style={{ position: "absolute", top: `${50 - textSet.top}%`, left: `${textSet.left + 50}%`, transform: `translate(-50%, -50%) rotate(${textSet.rotation}deg)`, color: textSet.color, textAlign: "center", fontSize: `${textSet.fontSize}px`, fontWeight: textSet.fontWeight, fontFamily: textSet.fontFamily, opacity: textSet.opacity, zIndex: 0 }}>
-                      {textSet.text}
-                    </div>
-                  ))}
-                </>
-              ) : (
-                <div style={{ textAlign: "center", margin: "25px 0 0 0" }}>
-                  <Spin />
-                </div>
-              )}
-            </Col>
-            <Col xs={24} md={14}>
-              <Title level={4}>Manage Text</Title>
-              <Button onClick={addNewTextSet} style={{ marginBottom: "20px" }}>
-                Add Text
-              </Button>
-              <Collapse accordion>
-                {textSets.map((textSet, index) => (
-                  <Panel
-                    header={`Text Block ${index + 1}`}
-                    key={textSet.id}
-                    extra={
-                      <>
-                        <Button type="link" onClick={() => duplicateTextSet(textSet)} style={{ marginRight: 10 }}>
-                          Duplicate
-                        </Button>
-                        <Button type="link" onClick={() => removeTextSet(textSet.id)}>
-                          Remove
-                        </Button>
-                      </>
-                    }
-                  >
-                    <TextCustomizer
-                      textSet={textSet}
-                      handleAttributeChange={handleAttributeChange}
-                      removeTextSet={removeTextSet}
-                      duplicateTextSet={duplicateTextSet}
-                    />
-                  </Panel>
-                ))}
-              </Collapse>
-            </Col>
-          </Row>
-          <Divider />
-          <Row justify="center" gutter={16} style={{ rowGap: "20px" }}>
-            <Col>
-              <Button
-                type="primary"
-                onClick={saveCompositeImage}
-                icon={<DownloadOutlined />}
-                disabled={isDownloading}
-              >
-                {isDownloading ? "Downloading..." : "Download Image with Text"}
-              </Button>
-            </Col>
-            {removedBgImageUrl && (
-              <Col>
-                <Button onClick={downloadRemovedBgImage} icon={<DownloadOutlined />}>
-                  Download Background-Removed Image
-                </Button>
-              </Col>
-            )}
-          </Row>
-          <Divider />
-          <Row justify="center" gutter={16} className="mb-6">
-            <Col xs={24} md={10}>
-              <Title level={3} style={{ textAlign: "center" }}>Original Image</Title>
-              <div>
-                <AntImage
-                  src={selectedImage}
-                  alt="Original Image"
-                  width="100%"
-                  height="auto"
-                  style={{ objectFit: "cover" }}
-                />
-              </div>
-            </Col>
-            <Col xs={24} md={10}>
-              <Title level={3} style={{ textAlign: "center" }}>Background Removed Image</Title>
-              {removedBgImageUrl ? (
-                <div>
-                  <AntImage
-                    src={removedBgImageUrl}
-                    alt="Background Removed"
-                    width="100%"
-                    height="auto"
-                    style={{ objectFit: "cover" }}
-                  />
-                </div>
-              ) : (
-                <div style={{ textAlign: "center", margin: "150px 0 0 0" }}>
-                  <Spin />
-                </div>
-              )}
-            </Col>
-          </Row>
-        </>
-      ) : (
-        <div style={{ textAlign: "center", padding: "20px" }}>
-          <Title level={5}>Upload an image to begin </Title>
-        </div>
-      )}
-    </div>
-  );
-};
-
-export default Page;
+function ToolDock({ready,canvasReady,addText,addGraphic,compare,preview}:{ready:boolean;canvasReady:boolean;addText:()=>void;addGraphic:()=>void;compare:()=>void;preview:()=>void}){return <nav aria-label="Editor tools" className="relative z-30 hidden min-h-0 flex-col items-center overflow-visible lg:flex"><div className="flex w-full flex-col items-center gap-1 overflow-visible rounded-[22px] border border-white/[.08] bg-white/[.045] p-2 shadow-xl backdrop-blur-2xl"><DockButton label="Add text" onClick={addText} disabled={!ready}><TextIcon/></DockButton><DockButton label="Add media" onClick={addGraphic} disabled={!ready}><GraphicIcon/></DockButton><span className="my-1 h-px w-8 bg-white/10"/><DockButton label="Compare" onClick={compare} disabled={!ready}><CompareIcon/></DockButton><DockButton label="Preview" onClick={preview} disabled={!ready||!canvasReady}><EyeIcon/></DockButton></div><div className="mt-auto rounded-full border border-white/[.07] bg-white/[.04] px-2 py-3 text-[9px] uppercase tracking-[.12em] text-white/30 [writing-mode:vertical-rl]">Studio</div></nav>}
+function DockButton({label,onClick,disabled=false,children}:{label:string;onClick:()=>void;disabled?:boolean;children:ReactNode}){return <button type="button" title={label} aria-label={label} onClick={onClick} disabled={disabled} className="group relative grid h-12 w-12 place-items-center rounded-2xl text-white/65 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-20"><span className="transition group-hover:scale-105">{children}</span><span className="pointer-events-none absolute left-[calc(100%+.65rem)] z-[80] whitespace-nowrap rounded-lg border border-white/10 bg-[#1b1c23] px-2.5 py-1.5 text-[11px] font-medium text-white opacity-0 shadow-2xl transition group-hover:translate-x-0.5 group-hover:opacity-100">{label}</span></button>}
+function CompactAction({label,onClick,disabled=false,children}:{label:string;onClick:()=>void;disabled?:boolean;children:ReactNode}){return <button type="button" aria-label={label} title={label} onClick={onClick} disabled={disabled} className="grid h-8 w-8 place-items-center rounded-full border border-white/10 bg-white/[.06] text-white/70 disabled:opacity-30">{children}</button>}
+function MobileDock({ready,canvasReady,downloading,addText,addGraphic,preview,download}:{ready:boolean;canvasReady:boolean;downloading:boolean;addText:()=>void;addGraphic:()=>void;preview:()=>void;download:()=>void}){return <nav aria-label="Mobile editor tools" className="fixed inset-x-3 bottom-3 z-40 grid grid-cols-4 rounded-[22px] border border-white/10 bg-[#18191f]/90 p-1.5 shadow-[0_20px_50px_rgba(0,0,0,.5)] backdrop-blur-2xl lg:hidden"><MobileDockButton label="Text" onClick={addText} disabled={!ready}><TextIcon/></MobileDockButton><MobileDockButton label="Media" onClick={addGraphic} disabled={!ready}><GraphicIcon/></MobileDockButton><MobileDockButton label="Preview" onClick={preview} disabled={!ready||!canvasReady}><EyeIcon/></MobileDockButton><MobileDockButton label="Export" onClick={download} disabled={!ready||!canvasReady||downloading} accent><DownloadIcon/></MobileDockButton></nav>}
+function MobileDockButton({label,onClick,disabled=false,accent=false,children}:{label:string;onClick:()=>void;disabled?:boolean;accent?:boolean;children:ReactNode}){return <button type="button" onClick={onClick} disabled={disabled} className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-[17px] text-[10px] font-medium transition disabled:opacity-25 ${accent?"bg-[#d9ff5a] text-[#111217]":"text-white/65 hover:bg-white/[.07] hover:text-white"}`}><span className="[&>svg]:h-[18px] [&>svg]:w-[18px]">{children}</span><span>{label}</span></button>}
+function ToolbarButton({label,disabled,onClick,children}:{label:string;disabled:boolean;onClick:()=>void;children:ReactNode}){return <button aria-label={label} title={label} disabled={disabled} onClick={onClick} className="grid h-9 w-9 place-items-center rounded-full border border-white/[.08] bg-white/[.045] text-white/70 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-20">{children}</button>}
+function HeaderButton({label,onClick,children,disabled=false}:{label:string;onClick:()=>void;children:ReactNode;disabled?:boolean}){return <button onClick={onClick} disabled={disabled} className="inline-flex h-9 items-center gap-2 rounded-full border border-white/[.08] bg-white/[.05] px-2.5 text-xs font-medium text-white/75 transition hover:bg-white/10 hover:text-white disabled:cursor-wait disabled:opacity-35 sm:px-3"><span>{children}</span><span className="hidden md:inline">{disabled?"Loading":label}</span></button>}
+function LayerActions({placement,kind,id,duplicate,remove,setPlacement}:{placement:LayerPlacement;kind:LayerKind;id:number;duplicate:()=>void;remove:()=>void;setPlacement:(kind:LayerKind,id:number,placement:LayerPlacement)=>void}){return <><div className="mb-5 flex items-center justify-between"><span className="text-[11px] font-medium uppercase tracking-[.1em] text-[#827c8b]">Selected {kind==="text"?"text":"graphic"}</span><div className="flex gap-3"><button onClick={duplicate} className="text-xs font-medium text-[#6f54e8]">Duplicate</button><button onClick={remove} className="text-xs font-medium text-[#d14370]">Delete</button></div></div><div className="mb-5"><span className="editor-label">Layer depth</span><div className="grid grid-cols-2 rounded-xl bg-[#ebe9ef] p-1"><button onClick={()=>setPlacement(kind,id,"behind")} className={`rounded-[9px] px-3 py-2 text-xs font-medium transition ${placement==="behind"?"bg-white shadow-sm":"text-[#716b7a]"}`}>Behind subject</button><button onClick={()=>setPlacement(kind,id,"front")} className={`rounded-[9px] px-3 py-2 text-xs font-medium transition ${placement==="front"?"bg-[#18171d] text-white shadow-sm":"text-[#716b7a]"}`}>On top</button></div><p className="mt-2 text-[11px] leading-4 text-[#8b8590]">Double-click any layer on the canvas to move it on top.</p></div></>}
+function GraphicCustomizer({layer,update}:{layer:ImageLayer;update:(id:number,patch:Partial<Omit<ImageLayer,"id">>)=>void}){return <div className="space-y-5"><div><label className="editor-label" htmlFor={`name-${layer.id}`}>Layer name</label><input id={`name-${layer.id}`} className="editor-input" value={layer.name} onChange={event=>update(layer.id,{name:event.target.value})}/></div><ControlRange id={`width-${layer.id}`} label="Size" value={layer.width} min={4} max={150} step={1} suffix="% canvas" onChange={value=>update(layer.id,{width:value})}/><ControlRange id={`opacity-${layer.id}`} label="Opacity" value={layer.opacity} min={.05} max={1} step={.05} onChange={value=>update(layer.id,{opacity:value})}/><ControlRange id={`rotation-${layer.id}`} label="Rotation" value={layer.rotation} min={-180} max={180} step={1} suffix="°" onChange={value=>update(layer.id,{rotation:value})}/><div className="rounded-2xl border border-[#7657ff]/10 bg-[#f0edff] p-4 text-xs leading-5 text-[#675c80]"><strong className="mb-0.5 block font-medium text-[#493d67]">Transparent assets work best</strong>Drag on the canvas, then use the handles to resize and rotate.</div></div>}
+function ControlRange({id,label,value,min,max,step,suffix="",onChange}:{id:string;label:string;value:number;min:number;max:number;step:number;suffix?:string;onChange:(value:number)=>void}){return <div><div className="mb-2 flex justify-between"><label className="editor-label !mb-0" htmlFor={id}>{label}</label><output className="text-xs font-medium text-[#6f54e8]">{Math.round(value*100)/100}{suffix}</output></div><input id={id} className="w-full accent-[#7557ff]" type="range" value={value} min={min} max={max} step={step} onChange={event=>onChange(Number(event.target.value))}/></div>}
+function EmptyLayers({addText,addGraphic}:{addText:()=>void;addGraphic:()=>void}){return <div className="p-5 text-center"><div className="rounded-[22px] border border-dashed border-[#7557ff]/25 bg-white/70 p-7"><span className="mx-auto grid h-11 w-11 place-items-center rounded-2xl bg-[#e9e4ff] text-[#7054ee]"><PlusIcon/></span><h3 className="mt-4 text-base font-semibold">Create your first layer</h3><p className="mt-2 text-xs leading-5 text-[#716b7a]">Add a headline, logo, graphic, emoji, or transparent sticker.</p><div className="mt-5 grid gap-2"><button onClick={addText} className="rounded-full bg-[#18171d] px-5 py-2.5 text-xs font-medium text-white">Add text</button><button onClick={addGraphic} className="rounded-full border border-black/[.08] bg-white px-5 py-2.5 text-xs font-medium">Add media</button></div></div></div>}
+function Processing({progress}:{progress:number|null}){const label=progress===null?"Loading the cutout model…":progress<100?"Downloading the AI model…":"Finding the subject edges…";return <div className="absolute inset-0 grid place-items-center bg-[#090a0e]/75 p-5 backdrop-blur-md"><div className="w-full max-w-sm rounded-[24px] border border-white/10 bg-[#191a21]/95 p-6 shadow-2xl"><div className="flex items-center gap-4"><span className="grid h-10 w-10 shrink-0 animate-pulse place-items-center rounded-2xl bg-[#d9ff5a] text-base font-medium text-[#17131f]">✦</span><div><p className="text-sm font-semibold">Creating your cutout</p><p className="mt-1 text-xs text-white/45">{label}</p></div></div><div className="mt-5 h-1.5 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-gradient-to-r from-[#7557ff] to-[#d8ff63] transition-all duration-300" style={{width:`${progress??12}%`}}/></div><div className="mt-2 flex justify-between text-[11px] font-medium text-white/35"><span>Processed on this device</span><span>{progress===null?"Starting":`${progress}%`}</span></div></div></div>}
+function ErrorOverlay({message,retry}:{message:string|null;retry:()=>void}){return <div className="absolute inset-0 grid place-items-center bg-[#090a0e]/80 p-5 backdrop-blur-md"><div className="max-w-md rounded-[24px] border border-[#ff7fb2]/25 bg-[#211a23] p-7 text-center shadow-2xl"><span className="mx-auto grid h-11 w-11 place-items-center rounded-full bg-[#ff7fb2]/15 text-lg">!</span><h2 className="mt-4 text-lg font-semibold">Cutout needs another try</h2><p className="mt-2 text-sm leading-6 text-white/55">{message}</p><button onClick={retry} className="mt-5 rounded-full bg-[#ff8cb5] px-5 py-2.5 text-xs font-semibold text-[#17131f]">Try again</button></div></div>}
+function ModalShell({title,description,close,children,action}:{title:string;description:string;close:()=>void;children:ReactNode;action?:ReactNode}){return <div className="fixed inset-0 z-[100] grid place-items-center bg-[#05060a]/80 p-4 backdrop-blur-lg" role="dialog" aria-modal="true" aria-label={title} onMouseDown={event=>{if(event.target===event.currentTarget)close()}}><div className="w-full max-w-5xl overflow-hidden rounded-[26px] border border-white/10 bg-[#15161c] shadow-2xl"><div className="flex items-center justify-between border-b border-white/[.08] p-5 sm:px-6"><div><h2 className="text-lg font-semibold tracking-[-.02em]">{title}</h2><p className="mt-1 text-xs text-white/45">{description}</p></div><div className="flex items-center gap-2">{action}<button onClick={close} aria-label="Close" className="grid h-9 w-9 place-items-center rounded-full bg-white/[.07] text-lg text-white/70">×</button></div></div>{children}</div></div>}
+function ComparisonModal({original,cutout,close}:{original:string;cutout:string;close:()=>void}){const comparisonItem=(url:string,label:string,checker=false)=><div role="img" aria-label={label} className={`h-full w-full bg-center bg-no-repeat ${checker?"checkerboard":""}`} style={{backgroundImage:`url("${url}")`,backgroundSize:"contain"}}/>;return <ModalShell title="Original vs. background removed" description="Drag the handle to inspect the cutout edges." close={close}><div className="m-4 overflow-hidden rounded-2xl sm:m-6"><ReactCompareSlider className="max-h-[70vh] min-h-[420px] bg-[#0c0a10]" itemOne={comparisonItem(original,"Original image")} itemTwo={comparisonItem(cutout,"Image with background removed",true)}/></div><div className="flex justify-between px-7 pb-5 text-xs font-bold uppercase tracking-[.12em] text-white/50"><span>Original</span><span>Background removed</span></div></ModalShell>}
+function PreviewModal({url,close,download}:{url:string;close:()=>void;download:()=>void}){return <ModalShell title="Preview your design" description="Review the complete image at its original aspect ratio before exporting." close={close} action={<button onClick={download} className="hidden items-center gap-2 rounded-full bg-[#d9ff5a] px-4 py-2 text-xs font-semibold text-[#17131f] transition hover:bg-[#e2ff83] sm:inline-flex"><DownloadIcon/> Export PNG</button>}><div className="bg-[#0b0c10] p-3 sm:p-5"><div className="checkerboard relative h-[min(68vh,760px)] min-h-[320px] w-full overflow-hidden rounded-[20px] border border-white/10"><Image src={url} alt="Final composite preview" fill sizes="(max-width: 1024px) 94vw, 960px" unoptimized className="object-contain p-2 sm:p-4"/></div><div className="flex items-center justify-between px-1 pb-1 pt-3 text-[11px] text-white/35"><span>Full image · nothing cropped</span><span>PNG · original aspect ratio</span></div><button onClick={download} className="mt-2 inline-flex h-11 w-full items-center justify-center gap-2 rounded-full bg-[#d9ff5a] text-xs font-semibold text-[#17131f] sm:hidden"><DownloadIcon/> Export PNG</button></div></ModalShell>}
+function UploadWelcome({dragging,onDrag,onDrop,onUpload}:{dragging:boolean;onDrag:(value:boolean)=>void;onDrop:(event:DragEvent)=>void;onUpload:()=>void}){return <section className="relative grid min-h-[calc(100vh-64px)] place-items-center overflow-hidden px-5 py-12"><div className="absolute left-[18%] top-[18%] h-72 w-72 rounded-full bg-[#7557ff]/18 blur-[110px]"/><div className="absolute bottom-[10%] right-[18%] h-60 w-60 rounded-full bg-[#d8ff63]/10 blur-[100px]"/><div className="relative w-full max-w-2xl text-center"><div className="mb-7 inline-flex items-center rounded-full border border-white/[.08] bg-white/[.04] p-1 text-[11px] font-medium text-white/40 backdrop-blur-xl"><span className="rounded-full bg-white/10 px-3 py-1.5 text-white">01 Upload</span><span className="px-3 py-1.5">02 Cutout</span><span className="px-3 py-1.5">03 Create</span></div><h1 className="text-3xl font-semibold tracking-[-.04em] text-white sm:text-[42px] sm:leading-[1.08]">Start with one great photo.<br/><span className="text-[#a997ff]">Make the subject stand out.</span></h1><p className="mx-auto mt-4 max-w-lg text-sm leading-6 text-white/45">Upload a clear photo. OverlayIt removes the background on your device and opens a focused editing canvas.</p><div onDragEnter={event=>{event.preventDefault();onDrag(true)}} onDragOver={event=>event.preventDefault()} onDragLeave={()=>onDrag(false)} onDrop={onDrop} className={`mt-8 rounded-[28px] border p-2 transition duration-300 ${dragging?"scale-[1.01] border-[#d9ff5a]/70 bg-[#d9ff5a]/10":"border-white/[.09] bg-white/[.04]"}`}><button onClick={onUpload} className="group grid min-h-60 w-full place-items-center rounded-[22px] border border-dashed border-white/10 bg-[#101117]/80 px-6 py-9 transition hover:border-white/20 hover:bg-[#14151c]"><span><span className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-[#d9ff5a] text-[#17131f] transition group-hover:-translate-y-0.5"><UploadIcon/></span><span className="mt-5 block text-base font-medium">{dragging?"Drop your photo here":"Drop a photo or browse files"}</span><span className="mt-2 block text-xs text-white/35">JPG, PNG or WebP · up to 20 MB</span></span></button></div><p className="mt-4 text-[11px] text-white/30">Private by design · processed locally · never uploaded</p></div></section>}
